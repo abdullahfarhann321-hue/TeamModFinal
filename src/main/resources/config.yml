@@ -1,0 +1,161 @@
+# =====================================================================
+#  TeamMod configuration
+# =====================================================================
+# Default punishment durations (minutes).
+default-kick-minutes: 5
+default-ban-minutes: 30
+default-mute-minutes: 30
+
+# Warning escalation.
+warn-auto-mute-threshold: 3    # active warnings that trigger an automatic mute
+warn-auto-mute-minutes: 10     # length of the automatic mute
+
+# =====================================================================
+#  TEAMS & ACCESS  (this is the source of truth for TeamMod)
+# =====================================================================
+# Define your teams below. TeamMod uses THIS, not BetterTeams' ranks, to decide
+# who may use the commands and who they may punish:
+#
+#   * Only players listed under a team's "leaders" may use the commands
+#     (operator status is NOT required).
+#   * A leader may only punish players on their OWN team (its "members" or
+#     "leaders" list). They cannot touch the other team.
+#   * A leader cannot punish another leader of their team, but CAN punish
+#     themselves.
+#   * Names are matched case-insensitively; update them if a player renames.
+#
+# You can also manage these live in-game (OPERATORS ONLY):
+#   /tm addleader <team> <player>      /tm removeleader <team> <player>
+#   /tm addmember <team> <player>      /tm removemember <team> <player>
+#   /tm reload
+teams:
+  team1:
+    leaders:
+      - ExampleLeaderOne
+    members:
+      - ExampleMemberA
+      - ExampleMemberB
+  team2:
+    leaders:
+      - ExampleLeaderTwo
+    members:
+      - ExampleMemberC
+      - ExampleMemberD
+
+# =====================================================================
+#  Sound effects
+# =====================================================================
+# A sound is played to everyone on the affected team whenever an action fires.
+# Set enabled: false to turn all sounds off. Each action takes a Minecraft sound
+# key (https://minecraft.wiki/w/Sounds.json), a volume, and a pitch (0.5-2.0).
+sounds:
+  enabled: true
+  kick:
+    sound: minecraft:block.anvil.land
+    volume: 1.0
+    pitch: 1.0
+  ban:
+    sound: minecraft:entity.ender_dragon.growl
+    volume: 1.0
+    pitch: 1.0
+  mute:
+    sound: minecraft:entity.villager.no
+    volume: 1.0
+    pitch: 1.0
+  auto-mute:
+    sound: minecraft:entity.villager.no
+    volume: 1.0
+    pitch: 0.8
+  warn:
+    sound: minecraft:block.note_block.pling
+    volume: 1.0
+    pitch: 1.0
+  unban:
+    sound: minecraft:entity.player.levelup
+    volume: 1.0
+    pitch: 1.0
+  unmute:
+    sound: minecraft:entity.player.levelup
+    volume: 1.0
+    pitch: 1.2
+
+# =====================================================================
+#  Messages
+# =====================================================================
+# Format: MiniMessage (https://docs.advntr.dev/minimessage/format.html),
+# e.g. <red>, <gold>, <bold>, <#ff8800>.
+# LEGACY FALLBACK: set use-legacy-colors: true to write these with '&' codes.
+use-legacy-colors: false
+
+messages:
+  prefix: "<gray>[<aqua>TeamMod<gray>]</gray> "
+
+  # --- access / validation errors ---
+  not-leader: "<red>Only a configured team leader may use TeamMod commands."
+  not-admin: "<red>Only server operators may use TeamMod management commands."
+  player-not-found: "<red>Could not find a player named '<gold><arg></gold>'."
+  target-not-on-team: "<red><gold><target></gold> is not on your team, so you cannot moderate them."
+  cannot-target-leader: "<red>You cannot moderate another leader of your team."
+  no-active-punishment: "<red><gold><target></gold> has no active punishment of that type to lift."
+  usage: "<red>Usage: <gold><usage>"
+  console-cannot-use: "<red>This command must be run by a player."
+
+  # --- kick (team-only: remove from BetterTeams team + block rejoining it) ---
+  kick-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow> was <gold>kicked</gold> from the team for <gold><duration></gold> by <aqua><leader></aqua>. <gray>Reason: <white><reason>"
+  kick-target: "<red>You were kicked from your team for <gold><duration></gold> by <aqua><leader></aqua>.\n<red>You cannot rejoin the team until it expires. <gray>Reason: <white><reason>"
+
+  # --- ban (SERVER ban, temporary) ---
+  ban-broadcast: "<dark_red>[<aqua>Team<dark_red>] <red><bold><target></bold></red> was <dark_red><bold>BANNED FROM THE SERVER</bold></dark_red> for <gold><duration></gold> by <aqua><leader></aqua>. <gray>Reason: <white><reason>"
+  ban-target: "<dark_red><bold>You have been banned from the server</bold></dark_red> for <gold><duration></gold> by <aqua><leader></aqua>. <gray>Reason: <white><reason>"
+  # Shown on the disconnect screen when a banned player tries to join.
+  ban-screen: "<dark_red><bold>You are banned from this server</bold>\n<gray>Time left: <gold><remaining></gold>\n<gray>Reason: <white><reason>"
+
+  # --- mute (ALL chat) ---
+  mute-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow> was <gold>muted</gold> for <gold><duration></gold> by <aqua><leader></aqua>. <gray>Reason: <white><reason>"
+  mute-target: "<red>You were muted (all chat) for <gold><duration></gold> by <aqua><leader></aqua>. <gray>Reason: <white><reason>"
+
+  # --- warn ---
+  warn-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow> was <gold>warned</gold> by <aqua><leader></aqua> <gray>(<gold><count></gold>/<gold><threshold></gold>). Reason: <white><reason>"
+  warn-target: "<red>You were warned by <aqua><leader></aqua> <gray>(warning <gold><count></gold> of <gold><threshold></gold>). Reason: <white><reason>"
+
+  # --- automatic mute from warning escalation ---
+  auto-mute-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow> reached <gold><threshold></gold> warnings and was <gold>auto-muted</gold> for <gold><duration></gold>."
+  auto-mute-target: "<red>You reached <gold><threshold></gold> warnings and were automatically muted for <gold><duration></gold>."
+
+  # --- manual lifts ---
+  unban-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow>'s server ban was lifted early by <aqua><leader></aqua>."
+  unban-target: "<green>Your server ban has been lifted early."
+  unmute-broadcast: "<gray>[<aqua>Team<gray>] <yellow><target></yellow>'s mute was lifted early by <aqua><leader></aqua>."
+  unmute-target: "<green>Your mute has been lifted early."
+
+  # --- automatic expiry (sent to the affected player if online) ---
+  expiry-kick-target: "<green>Your team kick has expired. You may rejoin the team."
+  expiry-mute-target: "<green>Your mute has expired."
+
+  # --- live enforcement ---
+  muted-blocked: "<red>You are muted for another <gold><remaining></gold> and cannot chat."
+  join-blocked: "<red>You are kicked from this team for another <gold><remaining></gold> and cannot rejoin yet."
+
+  # --- info / list / history ---
+  info-header: "<gray>--- <aqua>Status for <gold><target></gold> <gray>---"
+  info-active: "<gray>Active: <white><type></white> <gray>| remaining <gold><remaining></gold> <gray>| by <aqua><leader></aqua> <gray>| reason <white><reason>"
+  info-none: "<gray>No active punishments."
+  info-warnings: "<gray>Active warnings: <gold><count></gold>/<gold><threshold></gold>"
+
+  list-header: "<gray>--- <aqua>Active punishments on <gold><team></gold> <gray>---"
+  list-entry: "<gray>- <white><type></white> <gray>on <yellow><target></yellow> <gray>| remaining <gold><remaining></gold> <gray>| by <aqua><leader></aqua>"
+  list-empty: "<gray>No active punishments on your team."
+
+  history-header: "<gray>--- <aqua>History for <gold><target></gold> <gray>---"
+  history-entry: "<gray>#<index> <white><type></white> <gray>| <gold><duration></gold> <gray>| by <aqua><leader></aqua> <gray>| <white><date></white> <gray>| <status> <gray>| <white><reason>"
+  history-empty: "<gray>No history found for <gold><target></gold>."
+
+  # --- management (operator-only) ---
+  reload-done: "<green>TeamMod config reloaded."
+  team-unknown: "<red>No team named '<gold><team></gold>' in the config. Known teams: <white><teams></white>."
+  leader-added: "<green>Added <gold><player></gold> as a leader of <aqua><team></aqua>."
+  leader-removed: "<green>Removed <gold><player></gold> as a leader of <aqua><team></aqua>."
+  member-added: "<green>Added <gold><player></gold> to <aqua><team></aqua>."
+  member-removed: "<green>Removed <gold><player></gold> from <aqua><team></aqua>."
+  entry-exists: "<red><gold><player></gold> is already on that list."
+  entry-missing: "<red><gold><player></gold> was not on that list."
