@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.anas</groupId>
+    <artifactId>TeamMod</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>TeamMod</name>
+    <description>Team-moderation commands layered on top of BetterTeams.</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Our own bytecode targets Java 21 (widely compatible; runs fine on the
+             Java 25 runtime Paper 26 requires). The BUILD itself must use JDK 25,
+             because paper-api 26.1.2 ships as Java 25 class files that only a
+             JDK 25 toolchain can read. The GitHub Actions workflow installs JDK 25. -->
+        <maven.compiler.release>21</maven.compiler.release>
+    </properties>
+
+    <repositories>
+        <!-- PaperMC repository (paper-api, bundled Adventure + MiniMessage). -->
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Paper API. Paper's 2026 versioning uses "<mcversion>.build.<n>-<channel>",
+             e.g. 26.1.2.build.72-stable. This is NOT the old "-R0.1-SNAPSHOT" format.
+             If a newer stable build of 26.1.2 exists and you want it, bump the build
+             number here (see https://jd.papermc.io/paper/26.1.2/ for the current one). -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>26.1.2.build.72-stable</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- BetterTeams (hard dependency, compile-time only).
+             The GitHub Actions workflow builds BetterTeams 5.1.2 from source and
+             installs it into the local Maven repo before building TeamMod, so this
+             dependency resolves without any manual jar handling.
+
+             Coordinates come from BetterTeams' own multi-module pom:
+               parent  = com.booksaw.betterteams:betterteams-parent:5.1.2
+               module  = com.booksaw.betterteams:betterteams:5.1.2   (this one)
+             NOTE: the Maven groupId is lower-case "betterteams", but the Java
+             PACKAGE is "com.booksaw.betterTeams" (capital T) - that is expected,
+             the two are unrelated. This code was written against the 5.1.2 API.
+
+             Provided scope = used only to compile; NEVER bundled into TeamMod.jar
+             (the running server supplies the real BetterTeams plugin). -->
+        <dependency>
+            <groupId>com.booksaw.betterteams</groupId>
+            <artifactId>betterteams</artifactId>
+            <version>5.1.2</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Produces target/TeamMod.jar -->
+        <finalName>${project.name}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+        </plugins>
+        <resources>
+            <!-- Filters plugin.yml so ${project.version} is substituted. -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+    </build>
+</project>
