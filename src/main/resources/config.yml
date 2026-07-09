@@ -78,6 +78,10 @@ sounds:
     sound: minecraft:entity.player.levelup
     volume: 1.0
     pitch: 1.2
+  report:
+    sound: minecraft:block.bell.use
+    volume: 1.0
+    pitch: 1.0
 
 # =====================================================================
 #  Messages
@@ -159,3 +163,18 @@ messages:
   member-removed: "<green>Removed <gold><player></gold> from <aqua><team></aqua>."
   entry-exists: "<red><gold><player></gold> is already on that list."
   entry-missing: "<red><gold><player></gold> was not on that list."
+
+  # --- reports (/report and /tm reports) ---
+  report-usage: "<red>Usage: <gold>/report <player> <reason> <estimated time></gold> <gray>(the last word is the estimated time)."
+  report-not-on-team: "<red>You must be on a team to report someone."
+  report-cannot-self: "<red>You cannot report yourself."
+  report-target-not-on-team: "<red>You can only report someone on <gold>your own team</gold>. <gray><target> is not on your team."
+  report-sent: "<green>Your report on <gold><reported></gold> was sent to your team leaders. Thank you."
+  report-notify: "<gray>[<gold>Report<gray>] <yellow><reporter></yellow> reported <yellow><reported></yellow>. <gray>Reason: <white><reason></white> <gray>| Est. time: <white><time></white>"
+  reports-login-notice: "<gray>[<gold>Report<gray>] Your team has <gold><count></gold> open report(s). Use <gold>/tm reports</gold> to view them."
+  reports-header: "<gray>--- <aqua>Open reports on <gold><team></gold> <gray>---"
+  reports-entry: "<gray>#<index> <yellow><reported></yellow> <gray>| by <yellow><reporter></yellow> <gray>| est. <white><time></white> <gray>| <white><date></white>\n     <gray>Reason: <white><reason>"
+  reports-footer: "<gray>Use <gold>/tm resolve <number></gold> to clear a report once handled."
+  reports-empty: "<gray>No open reports on your team."
+  report-resolved: "<green>Report on <gold><reported></gold> marked resolved."
+  report-resolve-badindex: "<red>No report with that number. Use <gold>/tm reports</gold> to see the list."
