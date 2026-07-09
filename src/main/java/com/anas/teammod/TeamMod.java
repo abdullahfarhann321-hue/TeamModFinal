@@ -48,6 +48,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -82,8 +83,9 @@ public final class TeamMod extends JavaPlugin {
 
             punishments = new PunishmentManager(this, storage, betterTeams, messages, teams, sounds);
             WarningManager warnings = new WarningManager(this, storage, messages, punishments);
+            ReportManager reports = new ReportManager(this, storage, teams, messages, sounds);
 
-            CommandHandler handler = new CommandHandler(this, punishments, warnings, messages, teams);
+            CommandHandler handler = new CommandHandler(this, punishments, warnings, messages, teams, reports);
             PluginCommand command = getCommand("teammod");
             if (command != null) {
                 command.setExecutor(handler);
@@ -92,8 +94,18 @@ public final class TeamMod extends JavaPlugin {
                 getLogger().severe("Command 'teammod' missing from plugin.yml; commands will not work.");
             }
 
+            ReportCommand reportCommand = new ReportCommand(this, teams, reports, messages);
+            PluginCommand reportCmd = getCommand("report");
+            if (reportCmd != null) {
+                reportCmd.setExecutor(reportCommand);
+                reportCmd.setTabCompleter(reportCommand);
+            } else {
+                getLogger().severe("Command 'report' missing from plugin.yml; /report will not work.");
+            }
+
             getServer().getPluginManager().registerEvents(new ChatListener(punishments, messages), this);
             getServer().getPluginManager().registerEvents(new JoinListener(punishments, messages), this);
+            getServer().getPluginManager().registerEvents(new LoginListener(teams, reports), this);
 
             punishments.rescheduleAll();
 
@@ -213,7 +225,8 @@ public final class TeamMod extends JavaPlugin {
                 DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
 
         private static final List<String> MOD_SUBS = List.of(
-                "kick", "ban", "mute", "unban", "unmute", "warn", "history", "info", "list");
+                "kick", "ban", "mute", "unban", "unmute", "warn", "history", "info", "list",
+                "reports", "resolve");
         private static final List<String> ADMIN_SUBS = List.of(
                 "addleader", "removeleader", "addmember", "removemember", "reload");
 
@@ -222,14 +235,16 @@ public final class TeamMod extends JavaPlugin {
         private final WarningManager warnings;
         private final Messages messages;
         private final TeamsConfig teams;
+        private final ReportManager reports;
 
         public CommandHandler(JavaPlugin plugin, PunishmentManager punishments, WarningManager warnings,
-                              Messages messages, TeamsConfig teams) {
+                              Messages messages, TeamsConfig teams, ReportManager reports) {
             this.plugin = plugin;
             this.punishments = punishments;
             this.warnings = warnings;
             this.messages = messages;
             this.teams = teams;
+            this.reports = reports;
         }
 
         @Override
@@ -272,6 +287,8 @@ public final class TeamMod extends JavaPlugin {
                 case "info" -> handleInfo(leader, team, args);
                 case "list" -> handleList(leader, team);
                 case "history" -> handleHistory(leader, args);
+                case "reports" -> handleReports(leader, team);
+                case "resolve" -> handleResolve(leader, team, args);
                 default -> reply(leader, "usage",
                         Messages.ph("usage", "/teammod <" + String.join("|", MOD_SUBS) + "> ..."));
             }
@@ -427,6 +444,46 @@ public final class TeamMod extends JavaPlugin {
                         "date", DATE_FMT.format(Instant.ofEpochMilli(p.getIssuedAt())),
                         "status", p.getOutcome().name(),
                         "reason", p.getReason())));
+            }
+        }
+
+        private void handleReports(Player leader, String team) {
+            List<Report> list = reports.list(team);
+            leader.sendMessage(messages.get("reports-header", Messages.ph("team", team)));
+            if (list.isEmpty()) {
+                leader.sendMessage(messages.get("reports-empty"));
+                return;
+            }
+            int index = 1;
+            for (Report r : list) {
+                leader.sendMessage(messages.get("reports-entry", Messages.ph(
+                        "index", String.valueOf(index++),
+                        "reporter", r.getReporter(),
+                        "reported", r.getReported(),
+                        "time", r.getEstimatedTime(),
+                        "date", DATE_FMT.format(Instant.ofEpochMilli(r.getTimestamp())),
+                        "reason", r.getReason())));
+            }
+            leader.sendMessage(messages.get("reports-footer"));
+        }
+
+        private void handleResolve(Player leader, String team, String[] args) {
+            if (args.length < 2) {
+                reply(leader, "usage", Messages.ph("usage", "/teammod resolve <number>"));
+                return;
+            }
+            int index;
+            try {
+                index = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                reply(leader, "report-resolve-badindex");
+                return;
+            }
+            String reported = reports.resolve(team, index);
+            if (reported == null) {
+                reply(leader, "report-resolve-badindex");
+            } else {
+                reply(leader, "report-resolved", Messages.ph("reported", reported));
             }
         }
 
@@ -698,6 +755,29 @@ public final class TeamMod extends JavaPlugin {
                 joiner.getPlayer().sendMessage(messages.prefixed("join-blocked",
                         Messages.ph("remaining", DurationUtil.format(remaining))));
             }
+        }
+    }
+
+    /**
+     * When a team leader logs in, notifies them (message + sound) if their team has
+     * open reports waiting, so reports filed while they were offline are never missed.
+     */
+    static class LoginListener implements Listener {
+
+        private final TeamsConfig teams;
+        private final ReportManager reports;
+
+        public LoginListener(TeamsConfig teams, ReportManager reports) {
+            this.teams = teams;
+            this.reports = reports;
+        }
+
+        @EventHandler
+        public void onJoin(PlayerJoinEvent event) {
+            Player player = event.getPlayer();
+            String team = teams.teamLedBy(player.getName()); // only leaders get notified
+            if (team == null) return;
+            reports.notifyOpenReports(player, team);
         }
     }
 
@@ -1282,6 +1362,225 @@ public final class TeamMod extends JavaPlugin {
     }
 
     /**
+     * A player-submitted report about a teammate. Informational only: it notifies
+     * the team's leaders and is stored so leaders can review it later. The
+     * "estimated time" is free-form text supplied by the reporter and is not
+     * enforced as a punishment.
+     */
+    static class Report {
+
+        private final String id;
+        private final String reporter;
+        private final String reported;
+        private final String team;
+        private final String reason;
+        private final String estimatedTime;
+        private final long timestamp;
+
+        public Report(String id, String reporter, String reported, String team,
+                      String reason, String estimatedTime, long timestamp) {
+            this.id = id;
+            this.reporter = reporter;
+            this.reported = reported;
+            this.team = team;
+            this.reason = reason;
+            this.estimatedTime = estimatedTime;
+            this.timestamp = timestamp;
+        }
+
+        public String getId() { return id; }
+        public String getReporter() { return reporter; }
+        public String getReported() { return reported; }
+        public String getTeam() { return team; }
+        public String getReason() { return reason; }
+        public String getEstimatedTime() { return estimatedTime; }
+        public long getTimestamp() { return timestamp; }
+
+        public Map<String, Object> toMap() {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", id);
+            m.put("reporter", reporter);
+            m.put("reported", reported);
+            m.put("team", team);
+            m.put("reason", reason);
+            m.put("time", estimatedTime);
+            m.put("timestamp", timestamp);
+            return m;
+        }
+
+        public static Report fromSection(ConfigurationSection s) {
+            try {
+                return new Report(
+                        s.getString("id"),
+                        s.getString("reporter", "unknown"),
+                        s.getString("reported", "unknown"),
+                        s.getString("team", "unknown"),
+                        s.getString("reason", ""),
+                        s.getString("time", ""),
+                        s.getLong("timestamp"));
+            } catch (Exception e) {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * {@code /report <player> <reason> <estimated time>} - lets a team member report
+     * a player ON THEIR OWN TEAM to the team's leaders.
+     *
+     * <p>Parsing: the FIRST argument is the reported player, the LAST argument is the
+     * (free-form) estimated time, and everything in between is the reason.</p>
+     */
+    static class ReportCommand implements CommandExecutor, TabCompleter {
+
+        private final JavaPlugin plugin;
+        private final TeamsConfig teams;
+        private final ReportManager reports;
+        private final Messages messages;
+
+        public ReportCommand(JavaPlugin plugin, TeamsConfig teams, ReportManager reports, Messages messages) {
+            this.plugin = plugin;
+            this.teams = teams;
+            this.reports = reports;
+            this.messages = messages;
+        }
+
+        @Override
+        public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+            if (!(sender instanceof Player reporter)) {
+                sender.sendMessage(messages.prefixed("console-cannot-use"));
+                return true;
+            }
+            // Need at least: <player> <reason> <time>
+            if (args.length < 3) {
+                reporter.sendMessage(messages.prefixed("report-usage"));
+                return true;
+            }
+
+            String reporterTeam = teams.teamOf(reporter.getName());
+            if (reporterTeam == null) {
+                reporter.sendMessage(messages.prefixed("report-not-on-team"));
+                return true;
+            }
+
+            // Nicely-cased name if the target is online, else what was typed.
+            Player onlineTarget = Bukkit.getPlayerExact(args[0]);
+            String reportedName = onlineTarget != null ? onlineTarget.getName() : args[0];
+
+            if (reporter.getName().equalsIgnoreCase(reportedName)) {
+                reporter.sendMessage(messages.prefixed("report-cannot-self"));
+                return true;
+            }
+            // Same-team rule: you can only report someone on YOUR team.
+            if (!teams.isOnTeam(reporterTeam, reportedName)) {
+                reporter.sendMessage(messages.prefixed("report-target-not-on-team",
+                        Messages.ph("target", reportedName)));
+                return true;
+            }
+
+            String estimatedTime = args[args.length - 1];
+            String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length - 1));
+
+            reports.file(reporter, reportedName, reporterTeam, reason, estimatedTime);
+            return true;
+        }
+
+        @Override
+        public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+            if (!(sender instanceof Player player)) return List.of();
+            if (args.length == 1) {
+                String team = teams.teamOf(player.getName());
+                List<String> names = new ArrayList<>();
+                if (team != null) {
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        if (!online.getName().equalsIgnoreCase(player.getName())
+                                && teams.isOnTeam(team, online.getName())) {
+                            names.add(online.getName());
+                        }
+                    }
+                }
+                String prefix = args[0].toLowerCase(Locale.ROOT);
+                names.removeIf(n -> !n.toLowerCase(Locale.ROOT).startsWith(prefix));
+                return names;
+            }
+            return List.of();
+        }
+    }
+
+    /**
+     * Handles player reports: files them, pings the team's leaders (with a sound),
+     * confirms to the reporter, and supports listing/resolving by leaders.
+     */
+    static class ReportManager {
+
+        private final JavaPlugin plugin;
+        private final StorageManager storage;
+        private final TeamsConfig teams;
+        private final Messages messages;
+        private final Sounds sounds;
+
+        public ReportManager(JavaPlugin plugin, StorageManager storage, TeamsConfig teams,
+                             Messages messages, Sounds sounds) {
+            this.plugin = plugin;
+            this.storage = storage;
+            this.teams = teams;
+            this.messages = messages;
+            this.sounds = sounds;
+        }
+
+        /** Files a report and notifies the team's leaders. */
+        public void file(Player reporter, String reportedName, String team, String reason, String estimatedTime) {
+            Report report = new Report(UUID.randomUUID().toString(), reporter.getName(), reportedName,
+                    team, reason, estimatedTime, System.currentTimeMillis());
+            storage.addReport(report);
+
+            // Ping every ONLINE leader of this team, with a sound.
+            Sound sound = sounds.get("report");
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (teams.leaderNamesOf(team).contains(online.getName().toLowerCase(java.util.Locale.ROOT))) {
+                    online.sendMessage(messages.prefixed("report-notify", Messages.ph(
+                            "reporter", reporter.getName(), "reported", reportedName,
+                            "reason", reason, "time", estimatedTime)));
+                    if (sound != null) online.playSound(sound);
+                }
+            }
+
+            reporter.sendMessage(messages.prefixed("report-sent", Messages.ph("reported", reportedName)));
+            plugin.getLogger().info("[TeamMod] REPORT by " + reporter.getName() + " against " + reportedName
+                    + " (team " + team + "). Reason: " + reason + " | est. time: " + estimatedTime);
+        }
+
+        public List<Report> list(String team) {
+            return storage.getReportsForTeam(team);
+        }
+
+        public int openCountForTeam(String team) {
+            return storage.getReportsForTeam(team).size();
+        }
+
+        /** Notifies a leader (message + sound) if their team has open reports. */
+        public void notifyOpenReports(Player leader, String team) {
+            int open = openCountForTeam(team);
+            if (open <= 0) return;
+            leader.sendMessage(messages.prefixed("reports-login-notice", Messages.ph("count", String.valueOf(open))));
+            Sound sound = sounds.get("report");
+            if (sound != null) leader.playSound(sound);
+        }
+
+        /**
+         * Resolves (removes) the report at a 1-based index within the team's list.
+         * @return the reported player's name if one was removed, otherwise null.
+         */
+        public String resolve(String team, int oneBasedIndex) {
+            List<Report> list = storage.getReportsForTeam(team);
+            if (oneBasedIndex < 1 || oneBasedIndex > list.size()) return null;
+            Report r = list.get(oneBasedIndex - 1);
+            storage.removeReport(r.getId());
+            return r.getReported();
+        }
+    }
+
+    /**
      * Loads and provides the per-action sound effects played when TeamMod broadcasts
      * a message. Configured under the {@code sounds:} section of config.yml; each
      * action type ("kick", "ban", "mute", "auto-mute", "warn", "unban", "unmute")
@@ -1343,6 +1642,7 @@ public final class TeamMod extends JavaPlugin {
         private final Map<String, Punishment> active = new ConcurrentHashMap<>();
         private final List<Punishment> history = new ArrayList<>();
         private final Map<String, Map<UUID, Integer>> warnings = new ConcurrentHashMap<>();
+        private final List<Report> reports = new ArrayList<>();
 
         public StorageManager(JavaPlugin plugin) {
             this.plugin = plugin;
@@ -1355,6 +1655,7 @@ public final class TeamMod extends JavaPlugin {
             active.clear();
             history.clear();
             warnings.clear();
+            reports.clear();
             if (!file.exists()) return;
 
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
@@ -1398,6 +1699,16 @@ public final class TeamMod extends JavaPlugin {
                     warnings.put(team, map);
                 }
             }
+
+            for (Map<?, ?> raw : yaml.getMapList("reports")) {
+                YamlConfiguration tmp = new YamlConfiguration();
+                ConfigurationSection s = tmp.createSection("e");
+                for (Map.Entry<?, ?> e : raw.entrySet()) {
+                    s.set(String.valueOf(e.getKey()), e.getValue());
+                }
+                Report r = Report.fromSection(s);
+                if (r != null) reports.add(r);
+            }
         }
 
         public void save() {
@@ -1427,6 +1738,10 @@ public final class TeamMod extends JavaPlugin {
                     }
                 }
             }
+
+            List<Map<String, Object>> reportList = new ArrayList<>();
+            for (Report r : reports) reportList.add(r.toMap());
+            yaml.set("reports", reportList);
 
             try {
                 if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
@@ -1523,6 +1838,28 @@ public final class TeamMod extends JavaPlugin {
             Map<UUID, Integer> map = warnings.get(team);
             if (map != null && map.remove(playerUuid) != null) save();
         }
+
+        // --- reports -------------------------------------------------------------
+
+        public void addReport(Report r) {
+            reports.add(r);
+            save();
+        }
+
+        public List<Report> getReportsForTeam(String team) {
+            List<Report> out = new ArrayList<>();
+            for (Report r : reports) {
+                if (team.equals(r.getTeam())) out.add(r);
+            }
+            return out;
+        }
+
+        /** Removes a report by id. Returns true if one was removed. */
+        public boolean removeReport(String id) {
+            boolean removed = reports.removeIf(r -> r.getId().equals(id));
+            if (removed) save();
+            return removed;
+        }
     }
 
     /**
@@ -1602,6 +1939,19 @@ public final class TeamMod extends JavaPlugin {
         public boolean isLeaderOf(String team, String name) {
             Set<String> s = leaders.get(team);
             return s != null && s.contains(key(name));
+        }
+
+        /** The team this player is ON (member or leader), or null. */
+        public String teamOf(String name) {
+            for (String team : leaders.keySet()) {
+                if (isOnTeam(team, name)) return team;
+            }
+            return null;
+        }
+
+        /** Lowercase leader names of a team (used to notify leaders). */
+        public Set<String> leaderNamesOf(String team) {
+            return leaders.getOrDefault(team, Set.of());
         }
 
         /** True if the player is on this team (member OR leader). */
