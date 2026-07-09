@@ -1,0 +1,49 @@
+name: Build TeamMod
+
+# Builds the plugin jar in the cloud (no local tools, no manual jar uploads).
+# It first compiles BetterTeams 5.1.2 from source so TeamMod has its API to
+# compile against, then builds TeamMod itself.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # BetterTeams targets Java 21, so build IT with JDK 21 (keeps its Lombok /
+      # annotation processing happy). Installing it puts com.booksaw.betterteams:
+      # betterteams:5.1.2 into the local Maven repo for the next step to use.
+      - name: Set up Java 21 (to build BetterTeams)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build and install BetterTeams 5.1.2 from source
+        run: |
+          git clone --depth 1 --branch 5.1.2 https://github.com/booksaw/BetterTeams.git betterteams-src
+          cd betterteams-src
+          mvn -B -ntp -DskipTests -pl BetterTeams -am install
+
+      # TeamMod needs JDK 25 because paper-api 26.1.2 ships as Java 25 class files.
+      # This second setup-java switches the active JDK to 25 for the TeamMod build.
+      - name: Set up Java 25 (to build TeamMod)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build TeamMod
+        run: mvn -B -ntp clean package
+
+      - name: Upload the plugin jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeamMod-jar
+          path: target/*.jar
+          if-no-files-found: error
