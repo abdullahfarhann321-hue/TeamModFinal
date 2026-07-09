@@ -1,0 +1,26 @@
+name: TeamMod
+version: '${project.version}'
+main: com.anas.teammod.TeamMod
+api-version: '1.21'          # accepted floor for the 26.x line
+author: Anas
+description: Team-moderation commands (kick/ban/mute/warn/history) with config-defined teams.
+
+# Hard dependency: BetterTeams provides the actual teams that /tm kick removes
+# players from, and the join event used to block rejoining after a kick.
+depend:
+  - BetterTeams
+
+commands:
+  teammod:
+    description: Team-moderation command root.
+    usage: /teammod <kick|ban|mute|unban|unmute|warn|history|info|list|addleader|removeleader|addmember|removemember|reload> ...
+    aliases: [tm]
+    # NOTE: intentionally NO 'permission:' here. Access to the moderation
+    # commands is controlled by the config 'teams.*.leaders' lists (checked in
+    # code), so team leaders do NOT need operator status. The management
+    # subcommands are separately gated to operators via 'teammod.admin' in code.
+
+permissions:
+  teammod.admin:
+    description: Allows the operator-only TeamMod management commands (addleader, reload, etc.).
+    default: op
