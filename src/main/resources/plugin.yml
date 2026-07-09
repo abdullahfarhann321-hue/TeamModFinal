@@ -13,12 +13,17 @@ depend:
 commands:
   teammod:
     description: Team-moderation command root.
-    usage: /teammod <kick|ban|mute|unban|unmute|warn|history|info|list|addleader|removeleader|addmember|removemember|reload> ...
+    usage: /teammod <kick|ban|mute|unban|unmute|warn|history|info|list|reports|resolve|addleader|removeleader|addmember|removemember|reload> ...
     aliases: [tm]
     # NOTE: intentionally NO 'permission:' here. Access to the moderation
     # commands is controlled by the config 'teams.*.leaders' lists (checked in
     # code), so team leaders do NOT need operator status. The management
     # subcommands are separately gated to operators via 'teammod.admin' in code.
+  report:
+    description: Report a player on your own team to your team leaders.
+    usage: /report <player> <reason> <estimated time>
+    # No permission: any player who is on a team (per config) may report a
+    # teammate; the same-team rule is enforced in code.
 
 permissions:
   teammod.admin:
